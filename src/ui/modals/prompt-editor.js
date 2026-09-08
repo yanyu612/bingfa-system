@@ -542,19 +542,9 @@ export async function loadPromptFiles(type = currentPromptType) {
             try {
                 let jsonContent = null;
 
-                // 1. 优先从持久化缓存加载
-                if (importedFiles[builtinCacheKey]) {
-                    try {
-                        jsonContent = JSON.parse(importedFiles[builtinCacheKey]);
-                        Logger.debug(`[提示词编辑器] 使用持久化缓存: ${file}`);
-                    } catch (e) {
-                        Logger.warn(`[提示词编辑器] 解析持久化缓存失败: ${file}`);
-                        jsonContent = null;
-                    }
-                }
-
-                // 2. 持久化缓存不存在，从服务器获取
-                if (!jsonContent) {
+                // 1. 始终优先读取当前扩展里的内置文件，确保升级后不会继续
+                // 显示持久化缓存中的旧版本名称和内容。
+                try {
                     const encodedFile = encodeURIComponent(file);
                     const basePath = getExtensionPath();
                     const filePath = `${basePath}/prompts/${subFolder}/${encodedFile}?_t=${Date.now()}`;
@@ -571,6 +561,18 @@ export async function loadPromptFiles(type = currentPromptType) {
                         } catch (cacheError) {
                             Logger.warn(`[提示词编辑器] 保存持久化缓存失败: ${file}`, cacheError);
                         }
+                    }
+                } catch (fetchError) {
+                    Logger.warn(`[提示词编辑器] 读取当前内置文件失败: ${file}`, fetchError);
+                }
+
+                // 2. 当前扩展文件不可用时，才使用持久化缓存兜底。
+                if (!jsonContent && importedFiles[builtinCacheKey]) {
+                    try {
+                        jsonContent = JSON.parse(importedFiles[builtinCacheKey]);
+                        Logger.debug(`[提示词编辑器] 使用离线持久化缓存: ${file}`);
+                    } catch (e) {
+                        Logger.warn(`[提示词编辑器] 解析持久化缓存失败: ${file}`);
                     }
                 }
 
@@ -746,23 +748,22 @@ export async function loadPromptFileContent(filename, forceFromFile = false) {
             return;
         }
 
-        // 否则加载内置文件（优先持久化缓存，除非强制刷新）
+        // 否则加载内置文件（当前扩展文件优先，持久化缓存仅作离线兜底）
         const builtinCacheKey = `${BUILTIN_CACHE_PREFIX}${filename}`;
         let jsonData = null;
+        let cachedJsonData = null;
 
-        // 1. 优先从持久化缓存加载（非强制刷新时）
-        if (!forceFromFile && importedFiles[builtinCacheKey]) {
+        // 先准备缓存兜底，但不要让它盖住扩展升级后的新版本。
+        if (importedFiles[builtinCacheKey]) {
             try {
-                jsonData = JSON.parse(importedFiles[builtinCacheKey]);
-                Logger.debug(`[提示词编辑器] 使用持久化缓存: ${filename}`);
+                cachedJsonData = JSON.parse(importedFiles[builtinCacheKey]);
             } catch (e) {
                 Logger.warn(`[提示词编辑器] 解析持久化缓存失败: ${filename}`);
-                jsonData = null;
             }
         }
 
-        // 2. 持久化缓存不存在或强制刷新，从服务器获取
-        if (!jsonData) {
+        // 每次都从当前扩展目录读取内置文件，以获得更新后的名称和内容。
+        try {
             await detectExtensionPath();
             const basePath = getExtensionPath();
             const parts = filename.split("/");
@@ -794,6 +795,13 @@ export async function loadPromptFileContent(filename, forceFromFile = false) {
                 Logger.debug(`[提示词编辑器] 已保存到持久化缓存: ${filename}`);
             } catch (cacheError) {
                 Logger.warn(`[提示词编辑器] 保存持久化缓存失败: ${filename}`, cacheError);
+            }
+        } catch (fetchError) {
+            if (!forceFromFile && cachedJsonData) {
+                jsonData = cachedJsonData;
+                Logger.warn(`[提示词编辑器] 当前内置文件不可用，使用离线缓存: ${filename}`);
+            } else {
+                throw fetchError;
             }
         }
 

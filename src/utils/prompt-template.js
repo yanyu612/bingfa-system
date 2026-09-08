@@ -41,14 +41,8 @@ export async function loadPromptTemplate(filename, forceRefresh = false) {
         return Array.isArray(jsonData) ? jsonData[0] : jsonData;
     }
 
-    // 2. 检查是否有内置提示词的持久化缓存（非强制刷新时）
-    if (!forceRefresh && importedFiles[builtinCacheKey]) {
-        Logger.debug(`[提示词] 使用持久化缓存: ${filename}`);
-        const jsonData = JSON.parse(importedFiles[builtinCacheKey]);
-        return Array.isArray(jsonData) ? jsonData[0] : jsonData;
-    }
-
-    // 3. 持久化缓存不存在，从服务器获取
+    // 2. 内置提示词始终优先读取当前扩展文件。旧实现优先使用持久化
+    // 缓存，导致扩展升级后仍永久停留在旧版提示词。
     try {
         const basePath = await detectExtensionPath();
         const parts = filename.split("/");
@@ -73,7 +67,7 @@ export async function loadPromptTemplate(filename, forceRefresh = false) {
         const templates = await response.json();
         const result = Array.isArray(templates) ? templates[0] : templates;
 
-        // 4. 服务器获取成功，保存到持久化缓存
+        // 3. 当前扩展文件获取成功，刷新持久化缓存
         try {
             savePromptFileData(builtinCacheKey, JSON.stringify(templates));
             Logger.debug(`[提示词] 已保存到持久化缓存: ${filename}`);
@@ -83,7 +77,7 @@ export async function loadPromptTemplate(filename, forceRefresh = false) {
 
         return result;
     } catch (error) {
-        // 5. 服务器获取失败，尝试使用持久化缓存（即使是强制刷新模式）
+        // 4. 当前扩展文件获取失败时，才使用持久化缓存作为离线兜底
         if (importedFiles[builtinCacheKey]) {
             Logger.warn(`[提示词] 服务器获取失败，使用持久化缓存: ${filename}`);
             const jsonData = JSON.parse(importedFiles[builtinCacheKey]);
