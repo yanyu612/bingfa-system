@@ -472,8 +472,8 @@ function computeMergedResult(partResults, bookName) {
     // 提取所有历史事件（保持原始顺序，不排序）
     const allEvents = [];
     const eventPattern = /<Historical_Occurrences>([\s\S]*?)<\/Historical_Occurrences>/gi;
-    // 兼容多种楼层格式：【124楼】、【124至#125】、【124至125楼】
-    const floorPattern = /【(\d+)(?:楼】|至#?(\d+)楼?】)/;
+    // 兼容多种楼层格式：【124楼】、【124至#125】、【124至125楼】及可选的 # 前缀
+    const floorPattern = /【#?(\d+)(?:楼】|至#?(\d+)楼?】)/;
 
     for (const result of validResults) {
         const content = result.rawMemory;
@@ -492,6 +492,7 @@ function computeMergedResult(partResults, bookName) {
                 const floor = floorMatch ? parseInt(floorMatch[1], 10) : 0;
                 allEvents.push({
                     floor: floor,
+                    floorTag: floorMatch?.[0] || "",
                     content: line.trim(),
                     sourcePartId: result.partId,
                 });
@@ -510,6 +511,7 @@ function computeMergedResult(partResults, bookName) {
                     const floor = parseInt(floorMatch[1], 10);
                     allEvents.push({
                         floor: floor,
+                        floorTag: floorMatch[0],
                         content: line.trim(),
                         sourcePartId: result.partId,
                     });
@@ -521,23 +523,14 @@ function computeMergedResult(partResults, bookName) {
     // 处理事件列表
     let finalEvents;
     if (deduplicateEnabled) {
-        // 去重模式：同一楼层只保留内容最长的
-        const floorBestEvent = new Map();
+        // 只去掉完全相同的事件。同一宏史卷分段中的多条日期事件会共享
+        // 一个楼层范围，不能再按起始楼层合并，否则只会剩下一条。
+        const uniqueEventMap = new Map();
         for (const event of allEvents) {
-            const existing = floorBestEvent.get(event.floor);
-            if (!existing || event.content.length > existing.content.length) {
-                floorBestEvent.set(event.floor, event);
-            }
+            const identity = `${event.floorTag}|${event.content.replace(/\s+/g, " ").trim()}`;
+            if (!uniqueEventMap.has(identity)) uniqueEventMap.set(identity, event);
         }
-        // 按原始出现顺序输出（使用第一次出现的顺序）
-        const seenFloors = new Set();
-        finalEvents = [];
-        for (const event of allEvents) {
-            if (!seenFloors.has(event.floor)) {
-                seenFloors.add(event.floor);
-                finalEvents.push(floorBestEvent.get(event.floor));
-            }
-        }
+        finalEvents = Array.from(uniqueEventMap.values());
     } else {
         // 不去重模式：相同楼层的内容放在一起（保持原始顺序）
         // 使用 Map 按楼层分组，保持首次出现的顺序

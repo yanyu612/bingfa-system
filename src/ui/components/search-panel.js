@@ -1504,24 +1504,13 @@ function mergePartEventsForSearch(partResults) {
     }
 
     if (deduplicateEnabled) {
-        // 去重模式：同一楼层只保留内容最长的
-        const floorBestEvent = new Map();
+        // 只去掉完全相同的事件；宏史卷内多条日期事件可能共享同一楼层范围。
+        const uniqueEventMap = new Map();
         for (const event of allEvents) {
-            const existing = floorBestEvent.get(event.floor);
-            if (!existing || event.content.length > existing.content.length) {
-                floorBestEvent.set(event.floor, event);
-            }
+            const identity = `${event.floor}|${event.content.replace(/\s+/g, " ").trim()}`;
+            if (!uniqueEventMap.has(identity)) uniqueEventMap.set(identity, event);
         }
-        // 按原始出现顺序输出（使用第一次出现的顺序）
-        const seenFloors = new Set();
-        const uniqueEvents = [];
-        for (const event of allEvents) {
-            if (!seenFloors.has(event.floor)) {
-                seenFloors.add(event.floor);
-                uniqueEvents.push(floorBestEvent.get(event.floor));
-            }
-        }
-        return uniqueEvents;
+        return Array.from(uniqueEventMap.values());
     } else {
         // 不去重模式：相同楼层的内容放在一起
         const floorGroups = new Map();
@@ -1597,9 +1586,9 @@ function parseHistoricalEvents(response) {
 
     for (const line of lines) {
         const trimmed = line.trim();
-        // 兼容多种楼层格式：【124楼】、【124至#125】、【124至125楼】
+        // 兼容多种楼层格式：【124楼】、【124至#125】、【124至125楼】及可选的 # 前缀
         // 捕获完整的楼层标签和内容
-        const floorMatch = trimmed.match(/^(【\d+(?:楼|至#?\d+楼?)】)(.*)$/);
+        const floorMatch = trimmed.match(/^(【#?\d+(?:楼|至#?\d+楼?)】)(.*)$/);
         if (floorMatch) {
             // 保留完整的楼层标签（如 【124至#125】）
             const floorTag = floorMatch[1];

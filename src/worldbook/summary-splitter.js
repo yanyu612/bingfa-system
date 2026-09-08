@@ -48,26 +48,46 @@ export function parseSegments(content) {
         return [];
     }
 
-    const segments = [];
+    const candidates = [];
 
-    // 匹配段落的正则表达式
-    // 格式：【X楼至Y楼详细总结记录】...内容...<task completed>X-Y</task completed>
-    // 或者：【X楼至Y楼详细总结记录】...内容...本条勿动【前X楼总结已完成】
-    const segmentRegex = /【(\d+)楼至(\d+)楼[^\n]*详细总结记录】([\s\S]*?)(?:<task completed>[\d-]+<\/task completed>|本条勿动【[^\]]+】)/g;
+    // 旧版详细总结格式：
+    // 【X楼至Y楼详细总结记录】...<task completed>X-Y</task completed>
+    // 同时兼容 Markdown/JSON 文本中标签前残留的转义反斜杠。
+    const legacyRegex = /【(\d+)楼至(\d+)楼[^\n]*详细总结记录】[\s\S]*?(?:\\?<task completed>[\d\s-]+\\?<\/task completed>|本条勿动【[^】]+】)/gi;
+    candidates.push(...collectRegexSegments(content, legacyRegex, (match) => ({
+        startFloor: parseInt(match[1], 10),
+        endFloor: parseInt(match[2], 10),
+    })));
 
-    let match;
-    while ((match = segmentRegex.exec(content)) !== null) {
-        const startFloor = parseInt(match[1], 10);
-        const endFloor = parseInt(match[2], 10);
-        const segmentContent = match[0];
+    // 宏史卷格式：
+    // 【宏史卷分段开始：521-640楼】...【宏史卷分段结束：521-640楼】
+    const macroHistoryRegex = /【宏史卷分段开始\s*[:：]\s*(\d+)\s*[-—–~～至]\s*(\d+)\s*楼】[\s\S]*?【宏史卷分段结束\s*[:：]\s*\d+\s*[-—–~～至]\s*\d+\s*楼】/g;
+    candidates.push(...collectRegexSegments(content, macroHistoryRegex, (match) => ({
+        startFloor: parseInt(match[1], 10),
+        endFloor: parseInt(match[2], 10),
+    })));
 
-        segments.push({
-            startFloor,
-            endFloor,
-            content: segmentContent,
-            charCount: segmentContent.length,
-        });
+    // 流水账格式：
+    // [#481至#485]...<task completed>481-519</task completed>
+    const ledgerRegex = /(\[#(\d+)(?:\s*至\s*#?(\d+))?\][\s\S]*?)\\?<task completed>\s*(\d+)\s*[-—–~～至]\s*(\d+)\s*\\?<\/task completed>/gi;
+    candidates.push(...collectRegexSegments(content, ledgerRegex, (match) => ({
+        startFloor: parseInt(match[4] || match[2], 10),
+        endFloor: parseInt(match[5] || match[3] || match[2], 10),
+    })));
+
+    // 一本 Lore 偶尔会混用新旧格式。按原文顺序合并候选，并跳过被旧版
+    // 外层分段完整包住的流水账候选，避免同一内容被拆成两份。
+    candidates.sort((a, b) =>
+        a.sourceStart - b.sourceStart || b.sourceEnd - b.sourceStart - (a.sourceEnd - a.sourceStart)
+    );
+    const accepted = [];
+    for (const candidate of candidates) {
+        const isNested = accepted.some((segment) =>
+            candidate.sourceStart >= segment.sourceStart && candidate.sourceEnd <= segment.sourceEnd
+        );
+        if (!isNested) accepted.push(candidate);
     }
+    const segments = accepted.map(({ sourceStart, sourceEnd, ...segment }) => segment);
 
     // 如果正则没有匹配到，尝试备用方案：按 --- 分隔符拆分
     if (segments.length === 0) {
@@ -76,6 +96,33 @@ export function parseSegments(content) {
     }
 
     Logger.log(`[SummarySplitter] 解析到 ${segments.length} 个段落`);
+    return segments;
+}
+
+/**
+ * 将某种分段正则的全部匹配转换为统一 Segment。
+ * @param {string} content 完整文本
+ * @param {RegExp} regex 全局正则
+ * @param {Function} getRange 从 match 读取楼层范围
+ * @returns {Array<Segment>}
+ */
+function collectRegexSegments(content, regex, getRange) {
+    const segments = [];
+    let match;
+
+    while ((match = regex.exec(content)) !== null) {
+        const range = getRange(match);
+        const segmentContent = match[0];
+        segments.push({
+            startFloor: range.startFloor,
+            endFloor: range.endFloor,
+            content: segmentContent,
+            charCount: segmentContent.length,
+            sourceStart: match.index,
+            sourceEnd: regex.lastIndex,
+        });
+    }
+
     return segments;
 }
 
@@ -90,18 +137,15 @@ function parseSegmentsByDivider(content) {
     // 按 --- 分隔
     const parts = content.split(/\n---+\n/);
 
-    // 从每个部分中提取楼层信息
-    const floorRegex = /【(\d+)楼至(\d+)楼/;
-
     for (const part of parts) {
         const trimmedPart = part.trim();
         if (!trimmedPart) continue;
 
-        const floorMatch = trimmedPart.match(floorRegex);
-        if (floorMatch) {
+        const floorRange = extractFloorRange(trimmedPart);
+        if (floorRange) {
             segments.push({
-                startFloor: parseInt(floorMatch[1], 10),
-                endFloor: parseInt(floorMatch[2], 10),
+                startFloor: floorRange.startFloor,
+                endFloor: floorRange.endFloor,
                 content: trimmedPart,
                 charCount: trimmedPart.length,
             });
@@ -119,6 +163,41 @@ function parseSegmentsByDivider(content) {
 
     Logger.log(`[SummarySplitter] 备用方案解析到 ${segments.length} 个段落`);
     return segments;
+}
+
+/**
+ * 从任一受支持格式中读取楼层范围，供无完整结束标记时兜底。
+ * @param {string} content 分段文本
+ * @returns {{startFloor:number,endFloor:number}|null}
+ */
+function extractFloorRange(content) {
+    const macroMatch = content.match(/【宏史卷分段开始\s*[:：]\s*(\d+)\s*[-—–~～至]\s*(\d+)\s*楼】/);
+    if (macroMatch) {
+        return {
+            startFloor: parseInt(macroMatch[1], 10),
+            endFloor: parseInt(macroMatch[2], 10),
+        };
+    }
+
+    const legacyMatch = content.match(/【(\d+)楼至(\d+)楼/);
+    if (legacyMatch) {
+        return {
+            startFloor: parseInt(legacyMatch[1], 10),
+            endFloor: parseInt(legacyMatch[2], 10),
+        };
+    }
+
+    const ledgerMatches = [...content.matchAll(/\[#(\d+)(?:\s*至\s*#?(\d+))?\]/g)];
+    if (ledgerMatches.length > 0) {
+        const first = ledgerMatches[0];
+        const last = ledgerMatches[ledgerMatches.length - 1];
+        return {
+            startFloor: parseInt(first[1], 10),
+            endFloor: parseInt(last[2] || last[1], 10),
+        };
+    }
+
+    return null;
 }
 
 /**

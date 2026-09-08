@@ -1,6 +1,6 @@
 {
   "name": "bingfa-system",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "SillyTavern 修改版记忆管理｜并发系统",
   "main": "dist/index.js",
   "scripts": {
