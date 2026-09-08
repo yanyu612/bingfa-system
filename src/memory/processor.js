@@ -313,7 +313,7 @@ export async function processSummaryBook(book, userMessage, context, signal) {
         const finalUserMessage = buildUserPrompt(userMessage);
 
         // 调用 API（添加 taskId 以支持流式进度更新）
-        const response = await APIAdapter.call(
+        const response = await callHistoricalWithEmptyRetry(
             { ...aiConfig, taskId },
             finalSystemPrompt,
             finalUserMessage,
@@ -405,7 +405,7 @@ export async function processSummaryPart(book, part, userMessage, context, signa
         const finalUserMessage = buildUserPrompt(userMessage);
 
         // 调用 API（添加 taskId 以支持流式进度更新）
-        const response = await APIAdapter.call(
+        const response = await callHistoricalWithEmptyRetry(
             { ...partConfig, taskId },
             finalSystemPrompt,
             finalUserMessage,
@@ -571,6 +571,51 @@ function computeMergedResult(partResults, bookName) {
     };
 
     return mergedResult;
+}
+
+/**
+ * 判断 Lore API 是否真的返回了至少一条带楼层号的历史事件。
+ * 兼容插件标准格式、旧版中文标签以及模型偶尔直接返回的流水账格式。
+ */
+function hasHistoricalEvents(response) {
+    if (!response || typeof response !== "string") return false;
+
+    const content = response
+        .replace(/<\/?memory>/gi, "")
+        .replace(/<\/?(?:Historical_Occurrences|历史事件回忆)>/gi, "")
+        .trim();
+
+    if (!content || /未检索出|无相关历史|没有相关事件|暂无相关事件/.test(content)) {
+        return false;
+    }
+
+    return /^\s*(?:【#?\d+(?:楼】|(?:至|[-—–~～])#?\d+楼?】)|\[#\d+(?:\s*至\s*#?\d+)?\])/m.test(content);
+}
+
+/** Lore 模型偶发空召回时低温复核一次。 */
+async function callHistoricalWithEmptyRetry(apiConfig, systemPrompt, userMessage, signal) {
+    const response = await APIAdapter.call(apiConfig, systemPrompt, userMessage, signal);
+
+    if (hasHistoricalEvents(response) || signal?.aborted) {
+        return response;
+    }
+
+    log.warn(`Lore 任务 "${apiConfig.taskId || "unknown"}" 首次未召回事件，正在低温复核`);
+    const retryDirective = `
+
+// 空结果复核（最高优先级）
+// 上一次检索未返回带楼层号的事件。请重新逐条扫描全部 Lore，重点检查最新消息中的关系确认、承诺、婚约、信物、归属及其同义表达。
+// 宏史卷与 [#X] 流水账必须同等检索。只可引用原文，不得编造；若复核后确实没有相关事件，才保留空标签。`;
+
+    return APIAdapter.call(
+        {
+            ...apiConfig,
+            temperature: Math.min(Number(apiConfig.temperature ?? 0.7), 0.15),
+        },
+        systemPrompt + retryDirective,
+        userMessage,
+        signal,
+    );
 }
 
 /**
