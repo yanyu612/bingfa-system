@@ -23,6 +23,11 @@ import { getWorldBookList, getWorldBookEntries } from "@worldbook/api";
 import { analyzeSummaryContent, formatCharCount } from "@worldbook/summary-splitter";
 import { getSummaryContent } from "@worldbook/parser";
 import { buildOpenAIModelsUrl } from "@utils/url-builder";
+import {
+    deleteLoreApiPreset,
+    getLoreApiPresets,
+    saveLoreApiPreset,
+} from "@config/presets";
 
 // 更新显示回调函数（将在初始化时注入）
 let updateIndexMergeModelDisplayFn = null;
@@ -53,6 +58,112 @@ let plotConfigSelectedEntries = {};
 // 配置弹窗世界书缓存
 let configWorldBooksCache = [];
 let configEntriesCache = {};
+
+export function renderLoreApiPresetOptions(selectedId = "") {
+    const select = document.getElementById("mm-lore-api-preset-select");
+    if (!select) return;
+    const presets = getLoreApiPresets();
+    select.innerHTML = '<option value="">--- 选择常用 API ---</option>';
+    for (const preset of presets) {
+        const option = document.createElement("option");
+        option.value = preset.id;
+        option.textContent = `${preset.name}（${preset.model || "未指定模型"}）`;
+        select.appendChild(option);
+    }
+    select.value = selectedId;
+}
+
+function getSelectedLoreApiPreset() {
+    const id = document.getElementById("mm-lore-api-preset-select")?.value;
+    if (!id) return null;
+    return getLoreApiPresets().find((preset) => preset.id === id) || null;
+}
+
+export function applySelectedLoreApiPreset() {
+    const preset = getSelectedLoreApiPreset();
+    if (!preset) {
+        alert("请先选择一个 Lore API 预设");
+        return;
+    }
+
+    const formatRadio = Array.from(
+        document.querySelectorAll('input[name="mm-api-format"]'),
+    ).find((item) => item.value === (preset.apiFormat || "openai"));
+    if (formatRadio) formatRadio.checked = true;
+    const urlInput = document.getElementById("mm-config-url");
+    const keyInput = document.getElementById("mm-config-key");
+    const modelSelect = document.getElementById("mm-config-model");
+    if (urlInput) urlInput.value = preset.apiUrl || "";
+    if (keyInput) keyInput.value = preset.apiKey || "";
+    if (modelSelect && preset.model) {
+        let option = Array.from(modelSelect.options).find(
+            (item) => item.value === preset.model,
+        );
+        if (!option) {
+            option = document.createElement("option");
+            option.value = preset.model;
+            option.textContent = preset.model;
+            modelSelect.appendChild(option);
+        }
+        modelSelect.value = preset.model;
+    }
+    toggleCustomFormatOptions(preset.apiFormat === "custom");
+
+    const result = document.getElementById("mm-test-result");
+    if (result) {
+        result.textContent = "已填入 API 和模型，仍可手动修改";
+        result.className = "mm-test-result mm-test-success";
+    }
+}
+
+export function saveCurrentLoreApiPreset() {
+    if (currentEditingType !== "summary") return;
+    const apiUrl = document.getElementById("mm-config-url")?.value.trim() || "";
+    if (!apiUrl) {
+        alert("请先填写 API URL");
+        return;
+    }
+    const model = document.getElementById("mm-config-model")?.value.trim() || "";
+    if (!model) {
+        alert("请先获取并选择模型");
+        return;
+    }
+
+    const selectedPreset = getSelectedLoreApiPreset();
+    const name = prompt("给这个 Lore API 预设起个名字", selectedPreset?.name || "");
+    if (!name?.trim()) return;
+
+    const presets = getLoreApiPresets();
+    const duplicate = presets.find(
+        (preset) => preset.name.toLowerCase() === name.trim().toLowerCase(),
+    );
+    const target = selectedPreset || duplicate;
+    if (target && !confirm(`确定用当前 API 和模型覆盖预设“${target.name}”吗？`)) return;
+
+    const saved = saveLoreApiPreset({
+        id: target?.id,
+        name: name.trim(),
+        apiFormat:
+            document.querySelector('input[name="mm-api-format"]:checked')?.value ||
+            "openai",
+        apiUrl,
+        apiKey: document.getElementById("mm-config-key")?.value || "",
+        model,
+    });
+    renderLoreApiPresetOptions(saved.id);
+    Logger.log(`已保存 Lore API 预设：${saved.name}`);
+}
+
+export function deleteSelectedLoreApiPreset() {
+    const preset = getSelectedLoreApiPreset();
+    if (!preset) {
+        alert("请先选择要删除的 Lore API 预设");
+        return;
+    }
+    if (!confirm(`确定删除 Lore API 预设“${preset.name}”吗？`)) return;
+    deleteLoreApiPreset(preset.id);
+    renderLoreApiPresetOptions();
+}
 
 /**
  * 根据名称获取世界书对象
@@ -117,6 +228,11 @@ export function showConfigModal(category, type = "memory", partInfo = null) {
 
     const config = loadConfig();
     const globalSettings = getGlobalSettings();
+
+    const lorePresetGroup = document.getElementById("mm-lore-api-preset-group");
+    if (lorePresetGroup) {
+        lorePresetGroup.classList.toggle("mm-hidden", type !== "summary");
+    }
 
     // 根据类型获取配置
     let itemConfig = {};
@@ -263,6 +379,17 @@ export function showConfigModal(category, type = "memory", partInfo = null) {
     );
     if (formatRadio) formatRadio.checked = true;
     toggleCustomFormatOptions(format === "custom");
+
+    if (type === "summary") {
+        const matchingPreset = getLoreApiPresets().find(
+            (preset) =>
+                preset.apiFormat === format &&
+                preset.apiUrl === (itemConfig.apiUrl || "") &&
+                preset.apiKey === (itemConfig.apiKey || "") &&
+                preset.model === (itemConfig.model || ""),
+        );
+        renderLoreApiPresetOptions(matchingPreset?.id || "");
+    }
 
     const testResultEl = document.getElementById("mm-test-result");
     if (testResultEl) testResultEl.textContent = "";
@@ -605,7 +732,7 @@ export async function fetchModels() {
         }
 
         // 如果没有之前选中的，默认选第一个模型
-        if (!currentModel && models.length > 0) {
+        if ((!currentModel || !models.includes(currentModel)) && models.length > 0) {
             modelSelect.selectedIndex = 1; // 跳过 "请选择模型" 选项
         }
 

@@ -181,7 +181,7 @@ export function saveConfig(config) {
 
 /**
  * 清除旧数据（1分钟前就算旧数据），但保留各板块已配置的 API 信息
- * - 保留：memoryConfigs / summaryConfigs / global.indexMergeConfig(API相关字段) / global.plotOptimizeConfig(API相关字段) / global.multiAIGeneration.providers(API相关字段)
+ * - 保留：memoryConfigs / summaryConfigs / 角色世界书预设 / Lore API 预设 / global.indexMergeConfig(API相关字段) / global.plotOptimizeConfig(API相关字段) / global.multiAIGeneration.providers(API相关字段)
  * - 清除：提示词预设、已导入世界书记录、提示词文件缓存、UI位置缓存等
  * - 提示词文件设置会被清空，插件会自动加载内置提示词
  */
@@ -196,6 +196,8 @@ export function clearOldData(maxAgeMs = OLD_DATA_MAX_AGE_MS) {
         plotOptimizeConfig: structuredClone(config?.global?.plotOptimizeConfig || {}),
         providers: structuredClone(config?.global?.multiAIGeneration?.providers || []),
         tableFillerConfig: structuredClone(config?.global?.tableFillerConfig || {}),
+        roleWorldbookPresets: structuredClone(config?.roleWorldbookPresets || []),
+        loreApiPresets: structuredClone(config?.loreApiPresets || []),
     };
 
     // 保留完整的 API 配置字段（包括 enabled 等）
@@ -248,6 +250,8 @@ export function clearOldData(maxAgeMs = OLD_DATA_MAX_AGE_MS) {
     newConfig.memoryConfigs = preserved.memoryConfigs;
     newConfig.summaryConfigs = preserved.summaryConfigs;
     newConfig.summaryPartConfigs = preserved.summaryPartConfigs;
+    newConfig.roleWorldbookPresets = preserved.roleWorldbookPresets;
+    newConfig.loreApiPresets = preserved.loreApiPresets;
     newConfig.global.summaryAutoSplit = preserved.summaryAutoSplit;
     newConfig.global.indexMergeConfig = pickApiFields(preserved.indexMergeConfig, newConfig.global.indexMergeConfig);
     newConfig.global.plotOptimizeConfig = pickApiFields(preserved.plotOptimizeConfig, newConfig.global.plotOptimizeConfig);

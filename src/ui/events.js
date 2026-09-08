@@ -53,6 +53,9 @@ import {
     toggleCustomFormatOptions,
     loadConfigWorldBooks,
     loadConfigCharDescription,
+    applySelectedLoreApiPreset,
+    saveCurrentLoreApiPreset,
+    deleteSelectedLoreApiPreset,
 } from './modals/config-modal';
 
 // 重导出这些函数供外部使用
@@ -933,6 +936,16 @@ function bindConfigModalEvents() {
         ?.addEventListener("click", () => {
             if (fetchModelsFn) fetchModelsFn();
         });
+
+    document
+        .getElementById("mm-lore-api-preset-apply")
+        ?.addEventListener("click", applySelectedLoreApiPreset);
+    document
+        .getElementById("mm-lore-api-preset-save")
+        ?.addEventListener("click", saveCurrentLoreApiPreset);
+    document
+        .getElementById("mm-lore-api-preset-delete")
+        ?.addEventListener("click", deleteSelectedLoreApiPreset);
 
     // API 格式切换
     document

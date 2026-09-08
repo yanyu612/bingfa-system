@@ -135,6 +135,10 @@ export const defaultConfig = Object.freeze({
     },
     memoryConfigs: {},
     summaryConfigs: {},
+    // 每张角色卡对应的一组 Memory + Lore 世界书
+    roleWorldbookPresets: [],
+    // Lore API 连接预设（保存格式、URL、Key、模型，不绑定其他生成参数）
+    loreApiPresets: [],
     // 拆分后的Part配置（动态生成，每个Part可独立配置API）
     summaryPartConfigs: {
         // "Amily2-Lore-char-哥布林杀手9.6": {

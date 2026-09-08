@@ -13,6 +13,11 @@ import { refreshWorldBookList, getSummaryParts } from "@worldbook/refresh";
 import { formatCharCount } from "@worldbook/summary-splitter";
 import APIAdapter from "@api/adapter";
 import { buildOpenAIModelsUrl } from "@utils/url-builder";
+import {
+    deleteLoreApiPreset,
+    getLoreApiPresets,
+    saveLoreApiPreset,
+} from "@config/presets";
 
 /**
  * 从API获取模型列表
@@ -82,6 +87,96 @@ async function fetchModelsFromApi(apiUrl, apiKey, format) {
 // 当前编辑状态
 let currentBookName = null;
 let currentPartId = null;
+
+function renderPartLoreApiPresets(selectedId = '') {
+    const select = document.getElementById('mm-part-lore-api-preset');
+    if (!select) return;
+    select.innerHTML = '<option value="">--- 选择常用 API ---</option>';
+    for (const preset of getLoreApiPresets()) {
+        const option = document.createElement('option');
+        option.value = preset.id;
+        option.textContent = `${preset.name}（${preset.model || '未指定模型'}）`;
+        select.appendChild(option);
+    }
+    select.value = selectedId;
+}
+
+function getSelectedPartLoreApiPreset() {
+    const id = document.getElementById('mm-part-lore-api-preset')?.value;
+    if (!id) return null;
+    return getLoreApiPresets().find((preset) => preset.id === id) || null;
+}
+
+function applyPartLoreApiPreset() {
+    const preset = getSelectedPartLoreApiPreset();
+    if (!preset) {
+        alert('请先选择一个 Lore API 预设');
+        return;
+    }
+
+    const radio = Array.from(
+        document.querySelectorAll('input[name="mm-part-api-format"]'),
+    ).find((item) => item.value === (preset.apiFormat || 'openai'));
+    if (radio) radio.checked = true;
+    const urlInput = document.getElementById('mm-part-api-url');
+    const keyInput = document.getElementById('mm-part-api-key');
+    const modelSelect = document.getElementById('mm-part-model');
+    if (urlInput) urlInput.value = preset.apiUrl || '';
+    if (keyInput) keyInput.value = preset.apiKey || '';
+    if (modelSelect && preset.model) {
+        let option = Array.from(modelSelect.options).find(
+            (item) => item.value === preset.model,
+        );
+        if (!option) {
+            option = document.createElement('option');
+            option.value = preset.model;
+            option.textContent = preset.model;
+            modelSelect.appendChild(option);
+        }
+        modelSelect.value = preset.model;
+    }
+    document
+        .getElementById('mm-part-custom-format-options')
+        ?.classList.toggle('mm-hidden', preset.apiFormat !== 'custom');
+}
+
+function savePartLoreApiPreset() {
+    const config = getFormConfig();
+    if (!config.apiUrl || !config.model) {
+        alert('请先填写 API 地址并选择模型');
+        return;
+    }
+
+    const selectedPreset = getSelectedPartLoreApiPreset();
+    const name = prompt('给这个 Lore API 预设起个名字', selectedPreset?.name || '');
+    if (!name?.trim()) return;
+    const duplicate = getLoreApiPresets().find(
+        (preset) => preset.name.toLowerCase() === name.trim().toLowerCase(),
+    );
+    const target = selectedPreset || duplicate;
+    if (target && !confirm(`确定用当前 API 和模型覆盖预设“${target.name}”吗？`)) return;
+
+    const saved = saveLoreApiPreset({
+        id: target?.id,
+        name: name.trim(),
+        apiFormat: config.apiFormat,
+        apiUrl: config.apiUrl,
+        apiKey: config.apiKey,
+        model: config.model,
+    });
+    renderPartLoreApiPresets(saved.id);
+}
+
+function deletePartLoreApiPreset() {
+    const preset = getSelectedPartLoreApiPreset();
+    if (!preset) {
+        alert('请先选择要删除的 Lore API 预设');
+        return;
+    }
+    if (!confirm(`确定删除 Lore API 预设“${preset.name}”吗？`)) return;
+    deleteLoreApiPreset(preset.id);
+    renderPartLoreApiPresets();
+}
 
 /**
  * 获取当前主题
@@ -166,6 +261,21 @@ export function showSummaryPartConfigModal(bookName, partId) {
                                 ${formatCharCount(part.charCount)} 字符 | ${escapeHtml(bookName)}
                             </div>
                         </div>
+                    </div>
+
+                    <div class="mm-form-group">
+                        <label>Lore API 预设</label>
+                        <div class="mm-lore-preset-row">
+                            <select id="mm-part-lore-api-preset">
+                                <option value="">--- 选择常用 API ---</option>
+                            </select>
+                            <button type="button" id="mm-part-lore-api-apply" class="mm-btn mm-btn-primary">填入</button>
+                        </div>
+                        <div class="mm-lore-preset-actions">
+                            <button type="button" id="mm-part-lore-api-save" class="mm-btn mm-btn-secondary">保存当前 API 和模型</button>
+                            <button type="button" id="mm-part-lore-api-delete" class="mm-btn">删除预设</button>
+                        </div>
+                        <small class="mm-hint">填入格式、URL、Key 和模型；仍可临时修改，不覆盖其他参数。</small>
                     </div>
 
                     <!-- API格式 - 使用Radio按钮组 -->
@@ -277,6 +387,15 @@ export function showSummaryPartConfigModal(bookName, partId) {
     const modal = document.getElementById('mm-part-config-modal');
     applyThemeToModal(modal);
 
+    const matchingPreset = getLoreApiPresets().find(
+        (preset) =>
+            preset.apiFormat === apiFormat &&
+            preset.apiUrl === (savedConfig.apiUrl || '') &&
+            preset.apiKey === (savedConfig.apiKey || '') &&
+            preset.model === (savedConfig.model || ''),
+    );
+    renderPartLoreApiPresets(matchingPreset?.id || '');
+
     // 绑定事件
     bindPartConfigEvents();
 
@@ -294,6 +413,9 @@ function bindPartConfigEvents() {
     // 关闭按钮
     modal.querySelector('.mm-modal-close')?.addEventListener('click', hidePartConfigModal);
     modal.querySelector('#mm-part-cancel')?.addEventListener('click', hidePartConfigModal);
+    modal.querySelector('#mm-part-lore-api-apply')?.addEventListener('click', applyPartLoreApiPreset);
+    modal.querySelector('#mm-part-lore-api-save')?.addEventListener('click', savePartLoreApiPreset);
+    modal.querySelector('#mm-part-lore-api-delete')?.addEventListener('click', deletePartLoreApiPreset);
 
     // Temperature 滑块
     const tempSlider = modal.querySelector('#mm-part-temperature');
@@ -363,7 +485,7 @@ function bindPartConfigEvents() {
                         modelSelect.appendChild(option);
                     });
                     // 如果之前没有选中的，选择第一个模型
-                    if (!currentValue && models.length > 0) {
+                    if ((!currentValue || !models.includes(currentValue)) && models.length > 0) {
                         modelSelect.selectedIndex = 1;
                     }
                 }

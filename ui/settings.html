@@ -1004,6 +1004,20 @@
 
       <!-- Tab 1: API 配置 -->
       <div id="mm-config-tab-api-content" class="mm-config-tab-content active">
+      <div id="mm-lore-api-preset-group" class="mm-form-group mm-hidden">
+        <label>Lore API 预设</label>
+        <div class="mm-lore-preset-row">
+          <select id="mm-lore-api-preset-select">
+            <option value="">--- 选择常用 API ---</option>
+          </select>
+          <button type="button" id="mm-lore-api-preset-apply" class="mm-btn mm-btn-primary">填入</button>
+        </div>
+        <div class="mm-lore-preset-actions">
+          <button type="button" id="mm-lore-api-preset-save" class="mm-btn mm-btn-secondary">保存当前 API 和模型</button>
+          <button type="button" id="mm-lore-api-preset-delete" class="mm-btn">删除预设</button>
+        </div>
+        <small class="mm-hint">填入 API 格式、URL、Key 和模型；模型仍可临时修改，不会覆盖其他参数。</small>
+      </div>
       <div class="mm-form-group">
         <label>API 格式</label>
         <div class="mm-radio-group">
