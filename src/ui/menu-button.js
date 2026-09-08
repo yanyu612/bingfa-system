@@ -36,10 +36,10 @@ export function createExtensionMenuButton() {
     const menuItem = document.createElement("div");
     menuItem.id = "mm-extension-btn";
     menuItem.className = "extensionsMenuExtension";
-    menuItem.title = "记忆管理并发系统";
+    menuItem.title = "修改版记忆管理｜并发系统";
     menuItem.innerHTML = `
         <i class="fa-solid fa-brain" style="color: #87CEEB;"></i>
-        <span>记忆管理</span>
+        <span>修改版记忆管理</span>
     `;
 
     menuItem.addEventListener("click", () => {

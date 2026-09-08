@@ -465,7 +465,7 @@ export function createFloatBall() {
     floatBall = document.createElement("div");
     floatBall.id = "mm-float-ball";
     floatBall.className = "mm-float-ball";
-    floatBall.title = "记忆管理";
+    floatBall.title = "修改版记忆管理";
 
     const isMobile = isMobileLikeDevice();
     const ballSizePx = isMobile ? 24 : 28;

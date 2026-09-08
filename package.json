@@ -1,7 +1,7 @@
 {
-  "name": "memory-manager-concurrent",
-  "version": "0.6.0",
-  "description": "SillyTavern 记忆管理并发系统 - 智能记忆检索与注入系统",
+  "name": "bingfa-system",
+  "version": "0.6.1",
+  "description": "SillyTavern 修改版记忆管理｜并发系统",
   "main": "dist/index.js",
   "scripts": {
     "dev": "webpack --mode development --watch",
@@ -17,7 +17,7 @@
   "license": "CC-BY-NC-ND-4.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Cola-Echo/memory-manager-concurrent"
+    "url": "https://github.com/yanyu612/bingfa-system"
   },
   "engines": {
     "node": ">=18.0.0"

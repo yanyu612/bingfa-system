@@ -1,9 +1,9 @@
 /**
  * 记忆管理并发系统 - 主入口
- * @version 0.6.0
+ * @version 0.6.1
  * @author 可乐、繁华
  * @license CC BY-NC-ND 4.0
- * @see https://github.com/Cola-Echo/memory-manager-concurrent
+ * @see https://github.com/yanyu612/bingfa-system
  *
  * 这是模块化重构后的入口文件
  * 详细更新历史请查看 CHANGELOG.md
@@ -144,7 +144,7 @@ import {
 } from "@rma";
 
 // 版本信息
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 // 面板状态
 let isPanelVisible = false;

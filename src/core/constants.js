@@ -4,7 +4,7 @@
  */
 
 export const EXTENSION_NAME = "memory_manager_concurrent";
-export const EXTENSION_FOLDER = "memory-manager-concurrent";
+export const EXTENSION_FOLDER = "bingfa-system";
 
 let EXTENSION_BASE_PATH = null;
 

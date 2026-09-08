@@ -798,7 +798,7 @@ export async function loadDefaultIndependentTemplates() {
     }
 
     try {
-        const response = await fetch('/scripts/extensions/third-party/memory-manager-concurrent/prompts/table-filler/default-independent-template.json');
+        const response = await fetch('/scripts/extensions/third-party/bingfa-system/prompts/table-filler/default-independent-template.json');
         if (!response.ok) {
             Logger.warn('[独立模板] 加载内置默认模板失败:', response.status);
             return null;
