@@ -1,6 +1,6 @@
 /**
  * 记忆管理并发系统 - 主入口
- * @version 0.6.3
+ * @version 0.6.4
  * @author 可乐、繁华
  * @license CC BY-NC-ND 4.0
  * @see https://github.com/yanyu612/bingfa-system
@@ -144,7 +144,7 @@ import {
 } from "@rma";
 
 // 版本信息
-const VERSION = "0.6.3";
+const VERSION = "0.6.4";
 
 // 面板状态
 let isPanelVisible = false;

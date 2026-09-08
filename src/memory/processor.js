@@ -471,9 +471,9 @@ function computeMergedResult(partResults, bookName) {
 
     // 提取所有历史事件（保持原始顺序，不排序）
     const allEvents = [];
-    const eventPattern = /<Historical_Occurrences>([\s\S]*?)<\/Historical_Occurrences>/gi;
-    // 兼容多种楼层格式：【124楼】、【124至#125】、【124至125楼】及可选的 # 前缀
-    const floorPattern = /【#?(\d+)(?:楼】|至#?(\d+)楼?】)/;
+    const eventPattern = /<(?:Historical_Occurrences|历史事件回忆)>([\s\S]*?)<\/(?:Historical_Occurrences|历史事件回忆)>/gi;
+    // 兼容至号、连字符和可选 #：【124楼】【124至125楼】【124-125楼】
+    const floorPattern = /【#?(\d+)(?:楼】|(?:至|[-—–~～])#?(\d+)楼?】)/;
 
     for (const result of validResults) {
         const content = result.rawMemory;
@@ -488,12 +488,13 @@ function computeMergedResult(partResults, bookName) {
             const lines = eventsContent.split('\n').filter(line => line.trim());
 
             for (const line of lines) {
-                const floorMatch = line.match(floorPattern);
+                const normalizedLine = normalizeHistoricalEventLine(line);
+                const floorMatch = normalizedLine.match(floorPattern);
                 const floor = floorMatch ? parseInt(floorMatch[1], 10) : 0;
                 allEvents.push({
                     floor: floor,
                     floorTag: floorMatch?.[0] || "",
-                    content: line.trim(),
+                    content: normalizedLine,
                     sourcePartId: result.partId,
                 });
             }
@@ -506,13 +507,14 @@ function computeMergedResult(partResults, bookName) {
         if (!foundEvents) {
             const lines = content.split('\n').filter(line => line.trim());
             for (const line of lines) {
-                const floorMatch = line.match(floorPattern);
+                const normalizedLine = normalizeHistoricalEventLine(line);
+                const floorMatch = normalizedLine.match(floorPattern);
                 if (floorMatch) {
                     const floor = parseInt(floorMatch[1], 10);
                     allEvents.push({
                         floor: floor,
                         floorTag: floorMatch[0],
-                        content: line.trim(),
+                        content: normalizedLine,
                         sourcePartId: result.partId,
                     });
                 }
@@ -569,6 +571,24 @@ function computeMergedResult(partResults, bookName) {
     };
 
     return mergedResult;
+}
+
+/**
+ * 将模型可能照抄的 [#X至#Y] 来源标签统一为结果层使用的中文楼层标签。
+ * @param {string} line 单行事件
+ * @returns {string}
+ */
+function normalizeHistoricalEventLine(line) {
+    const trimmed = line.trim();
+    const ledgerMatch = trimmed.match(/^\[#(\d+)(?:\s*至\s*#?(\d+))?\](.*)$/);
+    if (!ledgerMatch) return trimmed;
+
+    const startFloor = ledgerMatch[1];
+    const endFloor = ledgerMatch[2];
+    const floorTag = endFloor
+        ? `【${startFloor}至${endFloor}楼】`
+        : `【${startFloor}楼】`;
+    return `${floorTag}${(ledgerMatch[3] || "").trim()}`;
 }
 
 /**

@@ -99,19 +99,28 @@ export function mergeResults(results, latestContext = "") {
             // 跳过非记忆搜索助手的历史事件
         } else {
             const historicalMatch = content.match(
-                /<Historical_Occurrences>([\s\S]*?)<\/Historical_Occurrences>/,
+                /<(?:Historical_Occurrences|历史事件回忆)>([\s\S]*?)<\/(?:Historical_Occurrences|历史事件回忆)>/i,
             );
-            if (historicalMatch) {
-                const events = historicalMatch[1].trim();
+            // 某些模型会漏掉外层标签，但仍输出带楼层标签的有效事件。
+            const events = (historicalMatch ? historicalMatch[1] : content).trim();
+            if (events) {
                 if (
-                    !INVALID_MARKERS.some((marker) => events.includes(marker)) &&
                     events.length > 10
                 ) {
                     events.split("\n").forEach((line) => {
                         const trimmed = line.trim();
-                        // 兼容多种楼层格式：【124楼】、【124至#125】、【124至125楼】
-                        if (trimmed && /^【\d+(?:楼】|至#?\d+楼?】)/.test(trimmed)) {
-                            historicalEvents.add(trimmed);
+                        const ledgerMatch = trimmed.match(/^\[#(\d+)(?:\s*至\s*#?(\d+))?\](.*)$/);
+                        const normalized = ledgerMatch
+                            ? `${ledgerMatch[2] ? `【${ledgerMatch[1]}至${ledgerMatch[2]}楼】` : `【${ledgerMatch[1]}楼】`}${(ledgerMatch[3] || "").trim()}`
+                            : trimmed;
+                        // 逐行过滤无结果标记，避免一行“未检索出”误杀同块内的有效事件。
+                        const isInvalidLine = INVALID_MARKERS.some((marker) => normalized.includes(marker));
+                        if (
+                            normalized &&
+                            !isInvalidLine &&
+                            /^【#?\d+(?:楼】|(?:至|[-—–~～])#?\d+楼?】)/.test(normalized)
+                        ) {
+                            historicalEvents.add(normalized);
                         }
                     });
                 }

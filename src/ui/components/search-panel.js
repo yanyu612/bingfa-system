@@ -1578,17 +1578,16 @@ function handleSearchError(panel, bookName, taskId, error) {
 function parseHistoricalEvents(response) {
     const events = [];
 
-    const match = response.match(/<Historical_Occurrences>([\s\S]*?)<\/Historical_Occurrences>/);
-    if (!match) return events;
-
-    const content = match[1].trim();
+    const match = response.match(/<(?:Historical_Occurrences|历史事件回忆)>([\s\S]*?)<\/(?:Historical_Occurrences|历史事件回忆)>/i);
+    // 有些模型会漏掉外层标签；只要仍返回了带楼层标签的事件，就继续解析。
+    const content = (match ? match[1] : response).trim();
     const lines = content.split("\n");
 
     for (const line of lines) {
         const trimmed = line.trim();
-        // 兼容多种楼层格式：【124楼】、【124至#125】、【124至125楼】及可选的 # 前缀
+        // 兼容至号、连字符和可选 #：【124楼】【124至125楼】【124-125楼】
         // 捕获完整的楼层标签和内容
-        const floorMatch = trimmed.match(/^(【#?\d+(?:楼|至#?\d+楼?)】)(.*)$/);
+        const floorMatch = trimmed.match(/^(【#?\d+(?:楼|(?:至|[-—–~～])#?\d+楼?)】)(.*)$/);
         if (floorMatch) {
             // 保留完整的楼层标签（如 【124至#125】）
             const floorTag = floorMatch[1];
@@ -1596,6 +1595,19 @@ function parseHistoricalEvents(response) {
             events.push({
                 floor: floorTag,
                 content: content.trim(),
+            });
+            continue;
+        }
+
+        // 兼容模型直接照抄 Lore 的 [#481至#485] 或 [#513]。
+        const ledgerMatch = trimmed.match(/^\[#(\d+)(?:\s*至\s*#?(\d+))?\](.*)$/);
+        if (ledgerMatch) {
+            const floorTag = ledgerMatch[2]
+                ? `【${ledgerMatch[1]}至${ledgerMatch[2]}楼】`
+                : `【${ledgerMatch[1]}楼】`;
+            events.push({
+                floor: floorTag,
+                content: (ledgerMatch[3] || "").trim(),
             });
         }
     }

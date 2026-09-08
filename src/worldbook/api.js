@@ -266,14 +266,20 @@ export function classifyWorldBooks(worldBooks) {
         // 先检查书名
         let isSummary = isSummaryBook(name);
 
-        // 如果书名没有匹配，再检查条目的 comment 是否包含 '敕史局'
+        // 如果书名没有匹配，再检查条目注释与内容。部分 Lore 只使用
+        // “宏史卷”或 [#X至#Y] 流水账格式，名称中并不含 Summary/Lore-char。
         if (!isSummary && book.entries) {
             for (const [uid, entry] of Object.entries(book.entries)) {
                 const comment = entry.comment || "";
-                if (comment.includes("敕史局")) {
+                const content = entry.content || "";
+                const hasHistoryFormat =
+                    /【宏史卷分段开始\s*[:：]\s*\d+/i.test(content) ||
+                    (/\[#\d+(?:\s*至\s*#?\d+)?\]/.test(content) &&
+                        /\\?<task completed>/i.test(content));
+                if (comment.includes("敕史局") || hasHistoryFormat) {
                     isSummary = true;
                     Logger.debug(
-                        `世界书 "${name}" 通过条目comment识别为总结类型`,
+                        `世界书 "${name}" 通过条目内容识别为总结类型`,
                     );
                     break;
                 }
