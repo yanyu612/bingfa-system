@@ -592,22 +592,43 @@ function hasHistoricalEvents(response) {
     return /^\s*(?:【#?\d+(?:楼】|(?:至|[-—–~～])#?\d+楼?】)|\[#\d+(?:\s*至\s*#?\d+)?\])/m.test(content);
 }
 
-/** Lore 模型偶发空召回时低温复核一次。 */
+/**
+ * 检查模型是否把完整事件写完。历史提示词要求每条事件独占一行并以句末标点结束；
+ * 像“段逐闲以新西兰国籍”这种半句话不能当作成功结果。
+ */
+function hasCompleteHistoricalEvents(response) {
+    if (!hasHistoricalEvents(response)) return false;
+
+    const content = response
+        .replace(/<\/?memory>/gi, "")
+        .replace(/<\/?(?:Historical_Occurrences|历史事件回忆)>/gi, "")
+        .trim();
+    const eventLines = content
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => /^(?:【#?\d+(?:楼】|(?:至|[-—–~～])#?\d+楼?】)|\[#\d+(?:\s*至\s*#?\d+)?\])/.test(line));
+
+    return eventLines.length > 0 && eventLines.every((line) => /[。！？!?；;”’）)]$/.test(line));
+}
+
+/** Lore 模型偶发空召回或返回未完句时低温复核一次。 */
 async function callHistoricalWithEmptyRetry(apiConfig, systemPrompt, userMessage, signal) {
     const response = await APIAdapter.call(apiConfig, systemPrompt, userMessage, signal);
 
-    if (hasHistoricalEvents(response) || signal?.aborted) {
+    if (hasCompleteHistoricalEvents(response) || signal?.aborted) {
         return response;
     }
 
-    log.warn(`Lore 任务 "${apiConfig.taskId || "unknown"}" 首次未召回事件，正在低温复核`);
+    const retryReason = hasHistoricalEvents(response) ? "事件句子未写完" : "未召回事件";
+    log.warn(`Lore 任务 "${apiConfig.taskId || "unknown"}" 首次${retryReason}，正在低温复核`);
     const retryDirective = `
 
-// 空结果复核（最高优先级）
-// 上一次检索未返回带楼层号的事件。请重新逐条扫描全部 Lore，重点检查最新消息中的关系确认、承诺、婚约、信物、归属及其同义表达。
-// 宏史卷与 [#X] 流水账必须同等检索。只可引用原文，不得编造；若复核后确实没有相关事件，才保留空标签。`;
+// 空结果或截断结果复核（最高优先级）
+// 上一次检索未返回事件，或把事件停在半句话。请重新逐条扫描全部 Lore，重点检查最新消息中的关系确认、承诺、婚约、信物、归属及其同义表达。
+// 宏史卷与 [#X] 流水账必须同等检索。只可引用原文，不得编造。每条事件必须写成语义完整的句子并以句号结束；禁止在“以、与、及、并、将、对”等未完成结构或事实要点中途停止。
+// 若复核后确实没有相关事件，才保留空标签。`;
 
-    return APIAdapter.call(
+    const retryResponse = await APIAdapter.call(
         {
             ...apiConfig,
             temperature: Math.min(Number(apiConfig.temperature ?? 0.7), 0.15),
@@ -616,6 +637,9 @@ async function callHistoricalWithEmptyRetry(apiConfig, systemPrompt, userMessage
         userMessage,
         signal,
     );
+
+    // 复核若意外返回空，至少保留首轮已有内容；否则优先使用复核后的完整结果。
+    return hasHistoricalEvents(retryResponse) ? retryResponse : response;
 }
 
 /**
